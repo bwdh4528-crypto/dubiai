@@ -23,7 +23,7 @@ describe("public AI procedures", () => {
     const result = await appRouter.createCaller(context).ai.chat({ grounded: true, messages: [{ role: "user", text: "מה חדש היום?" }] });
     expect(result).toMatchObject({ text: "תשובה עדכנית", grounded: true, sources: [{ title: "מקור לדוגמה", uri: "https://example.com/source" }] });
     const request = vi.mocked(globalThis.fetch).mock.calls[0];
-    expect(String(request?.[0])).toContain("gemini-1.5-pro:generateContent");
+    expect(String(request?.[0])).toContain("gemini-flash-latest:generateContent");
     const payload = JSON.parse(String((request?.[1] as RequestInit).body));
     expect(payload.tools).toEqual([{ google_search_retrieval: { dynamic_retrieval_config: { mode: "MODE_DYNAMIC", dynamic_threshold: 0.3 } } }]);
     expect(JSON.stringify(result)).not.toContain(process.env.GEMINI_API_KEY ?? "__missing_gemini_key__");

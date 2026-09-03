@@ -5,7 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { storageGetSignedUrl } from "./storage";
 
-const GEMINI_MODEL = "gemini-1.5-pro";
+const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 const MAX_HISTORY = 24;
 
@@ -47,7 +47,7 @@ async function runGemini(input: { messages: z.infer<typeof messageSchema>[]; gro
   })));
 
     const body: Record<string, unknown> = {
-    systemInstruction: { parts: [{ text: "אתה נשמה, עוזר AI אישי בעברית. היה מדויק, תמציתי ואדיב. כאשר מופיע מידע מהרשת, ציין בבירור מה נבדק ומה המקור. אל תמציא עובדות או קופונים." }] },
+    systemInstruction: { parts: [{ text: "אתה DubiAi, עוזר AI אישי בעברית. היה מדויק, תמציתי ואדיב. כאשר מופיע מידע מהרשת, ציין בבירור מה נבדק ומה המקור. אל תמציא עובדות או קופונים." }] },
     contents,
     generationConfig: { temperature: 0.35, maxOutputTokens: 1400 },
     };

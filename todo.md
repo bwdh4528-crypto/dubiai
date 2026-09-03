@@ -18,3 +18,10 @@
 - [x] Expand AI media tests to cover image editing, video generation, missing Fal.ai credentials, and credential non-leakage across media outputs and errors.
 - [x] Assert that media-procedure failures never expose FAL_KEY or GEMINI_API_KEY in thrown errors or returned payloads.
 - [x] Switch the backend Gemini model to gemini-1.5-pro with correct Google Search Grounding syntax, explicit try/catch logging, and process.env.GEMINI_API_KEY loading.
+- [x] Replace the Gemini model identifier with gemini-1.5-pro-latest and verify the generateContent request format prevents 404 errors.
+- [x] Run one real server-side smoke call to gemini-1.5-pro-latest:generateContent with the configured GEMINI_API_KEY and confirm it no longer returns 404 (verified 404; this drove the supported-model fallback).
+- [x] Use a validated Gemini model fallback after the live smoke call reports gemini-1.5-pro-latest is unsupported for v1beta generateContent (gemini-flash-latest selected from the live catalog).
+- [x] Rename the application and assistant to DubiAi across manifest, HTML metadata, headers, chat labels, and Hebrew messages.
+- [x] Switch the backend Gemini model to a supported latest identifier, preferably gemini-flash-latest.
+- [x] Run one real generateContent smoke test and confirm DubiAi responds successfully.
+- [x] Capture and verify a non-empty sanitized assistant text excerpt from a real gemini-flash-latest generateContent response.
