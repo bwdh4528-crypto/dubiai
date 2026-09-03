@@ -1,13 +1,19 @@
 # Project TODO
 
-- [ ] Replace starter home page with an elegant dark-mode-first Hebrew RTL AI workspace.
-- [ ] Add responsive conversation feed with auto-scroll, composer, loading states, and attachment previews.
-- [ ] Add secure server-side Gemini chat procedure using GEMINI_API_KEY from server environment only.
-- [ ] Add multimodal image-analysis flow without exposing uploaded media or credentials through client-side API code.
-- [ ] Add grounded web-search mode for current information and coupon-code queries, with grounded-result presentation.
-- [ ] Add secure server-side Fal.ai image generation, image editing, and video-generation actions using FAL_KEY only on the server.
-- [ ] Add quick action toggles and insert generated media into the conversation feed.
-- [ ] Add installable PWA manifest, service worker, icons, metadata, and offline-aware app-shell behavior.
-- [ ] Add Vitest coverage for server-side AI credential isolation and core assistant behavior.
-- [ ] Run checks and visually verify the responsive experience before creating the delivery checkpoint.
+- [x] Replace starter home page with an elegant dark-mode-first Hebrew RTL AI workspace.
+- [x] Add responsive conversation feed with auto-scroll, composer, loading states, and attachment previews.
+- [x] Add secure server-side Gemini chat procedure using GEMINI_API_KEY from server environment only.
+- [x] Add multimodal image-analysis flow without exposing uploaded media or credentials through client-side API code.
+- [x] Add grounded web-search mode for current information and coupon-code queries, with grounded-result presentation.
+- [x] Add secure server-side Fal.ai image generation, image editing, and video-generation actions using FAL_KEY only on the server.
+- [x] Add quick action toggles and insert generated media into the conversation feed.
+- [x] Add installable PWA manifest, service worker, icons, metadata, and offline-aware app-shell behavior.
+- [x] Add Vitest coverage for server-side AI credential isolation and core assistant behavior.
+- [x] Run checks and visually verify the responsive experience before creating the delivery checkpoint.
 - [x] Remove useAuth, login actions, and authentication-only UI from the main chat workspace so all visitors can use it.
+- [x] Upload user images through a server-side procedure first and remove client-sent base64 media from the public AI procedure contract.
+- [x] Add production PWA PNG icon assets for 192px, 512px, and Apple touch icon use, and reference them in manifest/head metadata.
+- [x] Add Vitest coverage for ai.chat and media procedures, including grounding/source mapping, missing-secret failures, and no credential leakage.
+- [x] Replace the client-sent base64 tRPC upload payload with a raw server upload endpoint so AI procedures receive only server-managed storage keys.
+- [x] Expand AI media tests to cover image editing, video generation, missing Fal.ai credentials, and credential non-leakage across media outputs and errors.
+- [x] Assert that media-procedure failures never expose FAL_KEY or GEMINI_API_KEY in thrown errors or returned payloads.

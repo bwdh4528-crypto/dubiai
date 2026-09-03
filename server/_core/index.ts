@@ -5,6 +5,7 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
+import { storagePut } from "../storage";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -36,6 +37,20 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+  app.post("/api/upload-image", express.raw({ type: "image/*", limit: "15mb" }), async (req, res) => {
+    const contentType = String(req.get("content-type") ?? "").split(";")[0].toLowerCase();
+    if (!contentType.startsWith("image/")) return res.status(415).json({ error: "Only image uploads are supported" });
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: "Image body is empty" });
+    try {
+      const rawName = String(req.get("x-file-name") ?? "upload").slice(0, 120);
+      const safeName = rawName.replace(/[^a-zA-Z0-9._-]/g, "-");
+      const stored = await storagePut(`assistant-uploads/${crypto.randomUUID()}-${safeName}`, req.body, contentType);
+      return res.json(stored);
+    } catch (error) {
+      console.error("[Upload] Failed to store image", error);
+      return res.status(500).json({ error: "Image upload failed" });
+    }
+  });
   // tRPC API
   app.use(
     "/api/trpc",

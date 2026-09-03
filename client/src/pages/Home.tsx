@@ -1,17 +1,27 @@
 import { useEffect, useRef, useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ArrowUp, Bot, BrainCircuit, Check, ChevronDown, Globe2, ImagePlus, Link2, Menu, Mic, Paperclip, Plus, Sparkles, UserRound, Video, WandSparkles, X } from "lucide-react";
+import { ArrowUp, BrainCircuit, Check, ChevronDown, Globe2, ImagePlus, Link2, Menu, Mic, Paperclip, Plus, Sparkles, UserRound, Video, WandSparkles, X } from "lucide-react";
 
-type Message = { id: number; role: "assistant" | "user"; text: string; time: string; grounded?: boolean; attachment?: string; media?: "image" | "video" };
+type Source = { title: string; uri: string };
+type Message = { id: number; role: "assistant" | "user"; text: string; time: string; grounded?: boolean; sources?: Source[]; attachment?: string; imageKey?: string; media?: "image" | "video"; mediaUrl?: string };
 
 const initialMessages: Message[] = [
   { id: 1, role: "assistant", text: "שלום, אני נשמה — סביבת העבודה האישית שלך עם AI.\n\nאיך אפשר לעזור לך היום? אפשר לשאול שאלה, לנתח תמונה, לחפש מידע עדכני או ליצור מדיה.", time: "09:41" },
   { id: 2, role: "assistant", text: "אפשר להתחיל עם אחת מהפעולות המהירות למטה, או פשוט לכתוב לי מה צריך.", time: "09:41" },
 ];
-
 const suggestions = ["סכם לי את החדשות החשובות היום", "נתח את התמונה המצורפת", "צור לי תמונה של שקיעה במדבר", "מצא קופונים פעילים ל־Airbnb"];
+
+const nowTime = () => new Date().toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+
+async function uploadAttachment(dataUrl: string, fileName: string | null) {
+  const blob = await fetch(dataUrl).then(response => response.blob());
+  const response = await fetch("/api/upload-image", { method: "POST", headers: { "content-type": blob.type, "x-file-name": fileName ?? "upload" }, body: blob });
+  if (!response.ok) throw new Error("העלאת התמונה נכשלה");
+  return await response.json() as { key: string; url: string };
+}
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
@@ -19,23 +29,50 @@ export default function Home() {
   const [searchMode, setSearchMode] = useState(false);
   const [activeAction, setActiveAction] = useState<"image" | "video" | null>(null);
   const [attachment, setAttachment] = useState<string | null>(null);
-  const [isThinking, setIsThinking] = useState(false);
+  const [attachmentName, setAttachmentName] = useState<string | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const chat = trpc.ai.chat.useMutation();
+  const imageGeneration = trpc.ai.generateImage.useMutation();
+  const imageEdit = trpc.ai.editImage.useMutation();
+  const videoGeneration = trpc.ai.generateVideo.useMutation();
+  const isThinking = chat.isPending || imageGeneration.isPending || imageEdit.isPending || videoGeneration.isPending;
 
   useEffect(() => { feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }); }, [messages, isThinking]);
 
+  const addAssistant = (text: string, extra: Partial<Message> = {}) => setMessages(items => [...items, { id: Date.now() + 1, role: "assistant", text, time: nowTime(), ...extra }]);
+
   const send = async (preset?: string) => {
     const text = (preset ?? draft).trim();
-    if (!text && !attachment) return;
-    const now = new Date().toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
-    setMessages((items) => [...items, { id: Date.now(), role: "user", text: text || "בדוק את הקובץ המצורף", time: now, attachment: attachment ?? undefined }]);
-    setDraft(""); setAttachment(null); setIsThinking(true);
-    window.setTimeout(() => {
-      const media = activeAction;
-      setMessages((items) => [...items, { id: Date.now() + 1, role: "assistant", text: media === "image" ? "מעולה — הכנתי כיוון ויזואלי לפי הבקשה שלך. בפרויקט המחובר, התמונה תוחזר כאן דרך Fal.ai." : media === "video" ? "קיבלתי. יצירת הווידאו התחילה — התוצאה תופיע כאן כשהשרת יחזיר אותה." : searchMode ? "מצאתי כמה כיוונים רלוונטיים ועדכניים. התשובה הסופית תכלול מקורות ותאריך בדיקה כדי שתוכל לאמת את המידע בקלות." : "אני על זה. אפשר לדייק את הבקשה, להוסיף קובץ או לבחור פעולה מהירה אחרת.", time: now, grounded: searchMode, media: media ?? undefined }]);
-      setIsThinking(false); setActiveAction(null);
-    }, 700);
+    if ((!text && !attachment) || isThinking) return;
+    const currentAttachment = attachment;
+    const userMessageId = Date.now();
+    setMessages(items => [...items, { id: userMessageId, role: "user", text: text || "בדוק את הקובץ המצורף", time: nowTime(), attachment: currentAttachment ?? undefined }]);
+    setDraft(""); setAttachment(null); setAttachmentName(null);
+    try {
+      const uploaded = currentAttachment ? await uploadAttachment(currentAttachment, attachmentName) : null;
+      if (uploaded) setMessages(items => items.map(message => message.id === userMessageId ? { ...message, imageKey: uploaded.key } : message));
+      if (activeAction === "image") {
+        const result = uploaded ? await imageEdit.mutateAsync({ prompt: text || "שפר את התמונה בעדינות", imageKey: uploaded.key }) : await imageGeneration.mutateAsync({ prompt: text });
+        addAssistant("המדיה מוכנה. היא נשמרת כאן כחלק מהשיחה שלך.", { media: "image", mediaUrl: result.url });
+      } else if (activeAction === "video") {
+        const result = await videoGeneration.mutateAsync({ prompt: text });
+        addAssistant("הווידאו מוכן. אפשר לצפות בו ישירות מתוך השיחה.", { media: "video", mediaUrl: result.url });
+      } else {
+        const history = messages.filter(m => m.role === "user" || m.role === "assistant").map(({ role, text: messageText, imageKey }) => ({ role, text: messageText, ...(imageKey ? { imageKey } : {}) }));
+        const result = await chat.mutateAsync({ grounded: searchMode, messages: [...history, { role: "user" as const, text: text || "נתח את התמונה המצורפת", ...(uploaded ? { imageKey: uploaded.key } : {}) }].slice(-24) });
+        addAssistant(result.text, { grounded: result.grounded, sources: result.sources });
+      }
+    } catch (error) {
+      addAssistant(error instanceof Error ? `לא הצלחתי להשלים את הבקשה: ${error.message}` : "לא הצלחתי להשלים את הבקשה כרגע.");
+    } finally { setActiveAction(null); }
+  };
+
+  const chooseFile = (file: File | undefined) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => { setAttachment(String(reader.result)); setAttachmentName(file.name); };
+    reader.readAsDataURL(file);
   };
 
   return <div dir="rtl" className="workspace-shell">
@@ -48,8 +85,8 @@ export default function Home() {
     </aside>
     <main className="chat-panel">
       <header className="chat-header"><div className="mobile-brand"><div className="brand-mark"><Sparkles size={17} /></div><strong>נשמה</strong></div><div className="model-select"><span className="status-dot" /> Gemini 1.5 Flash <ChevronDown size={14} /></div><div className="header-actions"><span className="secure-label"><Check size={14} /> מאובטח</span><button className="icon-button mobile-menu"><Menu size={19} /></button><button className="icon-button"><span className="help-dot">?</span></button></div></header>
-      <div className="conversation" ref={feedRef}><div className="date-divider"><span>היום, 03 בספטמבר 2026</span></div>{messages.map((message) => <div key={message.id} className={`message-row ${message.role}`}><div className={`message-avatar ${message.role}`}>{message.role === "assistant" ? <Sparkles size={15} /> : <UserRound size={15} />}</div><div className="message-stack"><div className="message-meta"><strong>{message.role === "assistant" ? "נשמה" : "אתה"}</strong><time>{message.time}</time>{message.grounded && <span className="grounded"><Globe2 size={12} /> מבוסס חיפוש</span>}</div><div className="message-bubble">{message.attachment && <div className="attachment-card"><img src={message.attachment} alt="קובץ מצורף" /><span>תמונה לניתוח</span></div>}<p>{message.text}</p>{message.media && <div className={`media-result ${message.media}`}><div className="media-placeholder">{message.media === "image" ? <ImagePlus size={25} /> : <Video size={25} />}<span>תצוגה מקדימה של {message.media === "image" ? "תמונה" : "וידאו"}</span></div></div>}</div></div></div>)}{isThinking && <div className="message-row assistant"><div className="message-avatar assistant"><Sparkles size={15} /></div><div className="thinking"><span /><span /><span /></div></div>}<div className="suggestion-grid">{suggestions.map((item) => <button key={item} onClick={() => send(item)}>{item}<ArrowUp size={14} /></button>)}</div></div>
-      <div className="composer-wrap"><div className="composer-tools"><button className={`tool-toggle ${searchMode ? "selected" : ""}`} onClick={() => setSearchMode(!searchMode)}><Globe2 size={16} /> חיפוש באינטרנט <span className="toggle-pill"><i /></span></button><span className="composer-hint">מידע עדכני ומקורות</span></div><div className="composer"><div className="composer-top">{attachment && <div className="preview-chip"><img src={attachment} alt="תצוגה מקדימה" /><button onClick={() => setAttachment(null)}><X size={12} /></button></div>}{activeAction && <div className="action-chip"><WandSparkles size={13} /> {activeAction === "image" ? "יצירת תמונה" : "יצירת וידאו"}<button onClick={() => setActiveAction(null)}><X size={12} /></button></div>}</div><Textarea value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder="כתוב הודעה לנשמה..." /><div className="composer-footer"><div className="composer-actions"><input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) setAttachment(URL.createObjectURL(f)); }} /><button onClick={() => fileRef.current?.click()} aria-label="צרף תמונה"><Paperclip size={18} /></button><button onClick={() => setActiveAction("image")} aria-label="צור תמונה"><ImagePlus size={18} /></button><button onClick={() => setActiveAction("video")} aria-label="צור וידאו"><Video size={18} /></button></div><div className="composer-right"><span>Enter לשליחה · Shift + Enter לשורה חדשה</span><button className="mic-button"><Mic size={17} /></button><button className="send-button" onClick={() => send()} disabled={!draft.trim() && !attachment}><ArrowUp size={18} /></button></div></div></div><p className="privacy-note"><Link2 size={12} /> המידע שלך פרטי ומאובטח. מפתחות API נשארים בשרת.</p></div>
+      <div className="conversation" ref={feedRef}><div className="date-divider"><span>היום, 03 בספטמבר 2026</span></div>{messages.map(message => <div key={message.id} className={`message-row ${message.role}`}><div className={`message-avatar ${message.role}`}>{message.role === "assistant" ? <Sparkles size={15} /> : <UserRound size={15} />}</div><div className="message-stack"><div className="message-meta"><strong>{message.role === "assistant" ? "נשמה" : "אתה"}</strong><time>{message.time}</time>{message.grounded && <span className="grounded"><Globe2 size={12} /> מבוסס חיפוש</span>}</div><div className="message-bubble">{message.attachment && <div className="attachment-card"><img src={message.attachment} alt="קובץ מצורף" /><span>{attachmentName ?? "תמונה לניתוח"}</span></div>}<p>{message.text}</p>{message.media && message.mediaUrl && <div className={`media-result ${message.media}`}>{message.media === "image" ? <img src={message.mediaUrl} alt="תוצאה שנוצרה" /> : <video src={message.mediaUrl} controls playsInline />}</div>}{message.sources && message.sources.length > 0 && <div className="sources"><span><Globe2 size={12} /> מקורות שנבדקו</span>{message.sources.slice(0, 3).map(source => <a key={source.uri} href={source.uri} target="_blank" rel="noreferrer">{source.title}<Link2 size={11} /></a>)}</div>}</div></div></div>)}{isThinking && <div className="message-row assistant"><div className="message-avatar assistant"><Sparkles size={15} /></div><div className="thinking"><span /><span /><span /></div></div>}<div className="suggestion-grid">{suggestions.map(item => <button key={item} onClick={() => send(item)}>{item}<ArrowUp size={14} /></button>)}</div></div>
+      <div className="composer-wrap"><div className="composer-tools"><button className={`tool-toggle ${searchMode ? "selected" : ""}`} onClick={() => setSearchMode(!searchMode)}><Globe2 size={16} /> חיפוש באינטרנט <span className="toggle-pill"><i /></span></button><span className="composer-hint">מידע עדכני ומקורות</span></div><div className="composer"><div className="composer-top">{attachment && <div className="preview-chip"><img src={attachment} alt="תצוגה מקדימה" /><span>{attachmentName}</span><button onClick={() => { setAttachment(null); setAttachmentName(null); }}><X size={12} /></button></div>}{activeAction && <div className="action-chip"><WandSparkles size={13} /> {activeAction === "image" ? "יצירת תמונה" : "יצירת וידאו"}<button onClick={() => setActiveAction(null)}><X size={12} /></button></div>}</div><Textarea value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }} placeholder="כתוב הודעה לנשמה..." /><div className="composer-footer"><div className="composer-actions"><input ref={fileRef} type="file" accept="image/*" hidden onChange={e => chooseFile(e.target.files?.[0])} /><button onClick={() => fileRef.current?.click()} aria-label="צרף תמונה"><Paperclip size={18} /></button><button onClick={() => setActiveAction("image")} aria-label="צור תמונה"><ImagePlus size={18} /></button><button onClick={() => setActiveAction("video")} aria-label="צור וידאו"><Video size={18} /></button></div><div className="composer-right"><span>Enter לשליחה · Shift + Enter לשורה חדשה</span><button className="mic-button" aria-label="הקלטה"><Mic size={17} /></button><button className="send-button" onClick={() => void send()} disabled={(!draft.trim() && !attachment) || isThinking}><ArrowUp size={18} /></button></div></div></div><p className="privacy-note"><Link2 size={12} /> המידע שלך פרטי ומאובטח. מפתחות API נשארים בשרת.</p></div>
     </main>
     <div className="right-rail"><div className="rail-card"><span className="eyebrow">מצב מערכת</span><div className="system-status"><i /> כל המערכות פעילות</div><div className="rail-stat"><span>זמן תגובה ממוצע</span><strong>1.2s</strong></div><div className="rail-stat"><span>מודל פעיל</span><strong>Gemini Flash</strong></div></div><div className="rail-card tips"><span className="eyebrow">טיפ קטן</span><h3>תן לי הקשר, ואחזיר תוצאה טובה יותר.</h3><p>אפשר לצרף תמונה, לבחור חיפוש או לבקש ממני ליצור משהו חדש.</p></div></div>
   </div>;
