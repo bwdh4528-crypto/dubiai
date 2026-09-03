@@ -17,3 +17,4 @@
 - [x] Replace the client-sent base64 tRPC upload payload with a raw server upload endpoint so AI procedures receive only server-managed storage keys.
 - [x] Expand AI media tests to cover image editing, video generation, missing Fal.ai credentials, and credential non-leakage across media outputs and errors.
 - [x] Assert that media-procedure failures never expose FAL_KEY or GEMINI_API_KEY in thrown errors or returned payloads.
+- [x] Switch the backend Gemini model to gemini-1.5-pro with correct Google Search Grounding syntax, explicit try/catch logging, and process.env.GEMINI_API_KEY loading.

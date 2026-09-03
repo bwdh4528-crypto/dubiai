@@ -5,7 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { storageGetSignedUrl } from "./storage";
 
-const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_MODEL = "gemini-1.5-pro";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 const MAX_HISTORY = 24;
 
@@ -37,7 +37,8 @@ async function inlineDataFromKey(imageKey: string) {
 }
 
 async function runGemini(input: { messages: z.infer<typeof messageSchema>[]; grounded: boolean }) {
-  const contents = await Promise.all(input.messages.slice(-MAX_HISTORY).map(async message => ({
+  try {
+    const contents = await Promise.all(input.messages.slice(-MAX_HISTORY).map(async message => ({
     role: message.role === "assistant" ? "model" : "user",
     parts: [
       { text: message.text },
@@ -45,25 +46,36 @@ async function runGemini(input: { messages: z.infer<typeof messageSchema>[]; gro
     ],
   })));
 
-  const body: Record<string, unknown> = {
+    const body: Record<string, unknown> = {
     systemInstruction: { parts: [{ text: "אתה נשמה, עוזר AI אישי בעברית. היה מדויק, תמציתי ואדיב. כאשר מופיע מידע מהרשת, ציין בבירור מה נבדק ומה המקור. אל תמציא עובדות או קופונים." }] },
     contents,
     generationConfig: { temperature: 0.35, maxOutputTokens: 1400 },
-  };
-  if (input.grounded) body.tools = [{ google_search: {} }];
+    };
+    if (input.grounded) {
+      body.tools = [{ google_search_retrieval: { dynamic_retrieval_config: { mode: "MODE_DYNAMIC", dynamic_threshold: 0.3 } } }];
+    }
 
-  const response = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(requireGeminiKey())}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) throw new Error(`Gemini request failed: ${response.status}`);
-  const data = await response.json() as any;
-  const candidate = data.candidates?.[0];
-  const text = candidate?.content?.parts?.map((part: any) => part.text).filter(Boolean).join("\n") ?? "לא הצלחתי להפיק תשובה כרגע.";
-  const grounding = candidate?.groundingMetadata;
-  const sources = (grounding?.groundingChunks ?? []).map((chunk: any) => chunk.web).filter(Boolean).map((web: any) => ({ title: web.title ?? "מקור", uri: web.uri })).filter((source: any) => source.uri);
-  return { text, grounded: Boolean(grounding), sources };
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) throw new Error("GEMINI_API_KEY is not configured on the server");
+    const response = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(key)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Gemini request failed: ${response.status} ${response.statusText} — ${errorText}`);
+    }
+    const data = await response.json() as any;
+    const candidate = data.candidates?.[0];
+    const text = candidate?.content?.parts?.map((part: any) => part.text).filter(Boolean).join("\n") ?? "לא הצלחתי להפיק תשובה כרגע.";
+    const grounding = candidate?.groundingMetadata;
+    const sources = (grounding?.groundingChunks ?? []).map((chunk: any) => chunk.web).filter(Boolean).map((web: any) => ({ title: web.title ?? "מקור", uri: web.uri })).filter((source: any) => source.uri);
+    return { text, grounded: Boolean(grounding), sources };
+  } catch (error) {
+    console.error("[Gemini] Request failed", { model: GEMINI_MODEL, grounded: input.grounded, error: error instanceof Error ? error.stack ?? error.message : error });
+    throw error instanceof Error ? error : new Error("Gemini request failed");
+  }
 }
 
 async function runFal(endpoint: string, input: Record<string, unknown>) {
