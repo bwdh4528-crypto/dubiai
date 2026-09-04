@@ -25,3 +25,5 @@
 - [x] Switch the backend Gemini model to a supported latest identifier, preferably gemini-flash-latest.
 - [x] Run one real generateContent smoke test and confirm DubiAi responds successfully.
 - [x] Capture and verify a non-empty sanitized assistant text excerpt from a real gemini-flash-latest generateContent response.
+- [ ] Export the completed project to bwdh4528-crypto/dubiai as a private GitHub repository without secrets.
+- [ ] Safely diagnose the previous GitHub remote failure and complete the private bwdh4528-crypto/dubiai export only after verification.
